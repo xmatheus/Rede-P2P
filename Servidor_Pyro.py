@@ -56,40 +56,23 @@ class GlobalFunctions(object):
             files.append(client.getFiles())
         return [item for sublist in files for item in sublist]
 
-    def sendFile(self, name, content, id):
-        print(bcolors.OKBLUE+"[RECEIVING-FILE]\t"+bcolors.ENDC+name)
+    def appendFile(self, fileName, clientId):
+        for client in clients:
+            if(clientId == client.id):
+                client.files.append(fileName)
 
-        fileId = uuid.uuid4()
-        client = self.loadBalacing()
+    def loadBalacing(self, clientId):
+        print(bcolors.OKBLUE+"[SENDING-FILE]\t"+bcolors.ENDC)
 
-        proxyClient = Pyro5.api.Proxy("PYRONAME:"+str(client.id))
-        fileName = str(fileId)+"-"+name
-        response = proxyClient.saveFile(fileName, content)
-
-        if(response == True):
-            log.save("RECEIVING-FILE-SUCESS", "from " +
-                     str(id)+" to "+str(client.id))
-
-            client.files.append(fileName)
-            print(bcolors.OKBLUE+"[  SAVED-FILE  ]\t"+bcolors.ENDC +
-                  name+" IN "+bcolors.WARNING+client.id+bcolors.ENDC)
-            return True
-        else:
-            log.save("RECEIVING-FILE-FAIL", "from " +
-                     str(id)+" to "+str(client.id))
-
-            print(bcolors.FAIL+"[ UNSAVED-FILE ]\t"+bcolors.ENDC +
-                  name+" IN "+bcolors.WARNING+client.id+bcolors.ENDC)
-            return False
-
-    def loadBalacing(self):
         selected = clients[0]
 
         for client in clients:
             if(len(client.files) < len(selected.files)):
                 selected = client
 
-        return selected
+        log.save("USER-REQUEST-SEND-FILE", "from " +
+                 str(clientId)+" to "+selected.id)
+        return selected.id
 
     def getFile(self, fileName):
         log.save("USER-REQUEST-FILE", fileName)

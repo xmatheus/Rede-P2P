@@ -20,11 +20,12 @@ banner = ("""\
 
 @ Pyro5.api.expose
 class GlobalFunctions(object):
-    def saveFile(self, name, content):
+    def saveFile(self, name, content, clientId):
         try:
             with open('./user-files/'+name, 'a') as output:
                 output.write(content)
             # print("\n[ACESSO-EXTERNO] Recendo arquivo")
+            log.save("LOCAL-FILE-SAVED", name + " from "+str(clientId))
             return True
         except:
             return False
@@ -81,6 +82,56 @@ def readFile():
     print(response)
 
 
+def connectToAnotherClient(anotherClientID, name, content):
+    proxyClient = Pyro5.api.Proxy("PYRONAME:"+str(anotherClientID))
+    fileId = uuid.uuid4()
+    fileName = str(fileId)+"-"+name
+    response = proxyClient.saveFile(fileName, content, id)
+
+    if(response == True):
+        log.save("SEND-FILE-SUCESS", "from " +
+                 str(id)+" to "+str(anotherClientID))
+
+        print(bcolors.OKBLUE+"[  SAVED-FILE  ]\t"+bcolors.ENDC +
+              name+" IN "+bcolors.WARNING+anotherClientID+bcolors.ENDC)
+
+        adder.appendFile(fileName, anotherClientID)
+    else:
+        log.save("SEND-FILE-FAIL", "from " +
+                 str(id)+" to "+str(anotherClientID))
+
+        print(bcolors.FAIL+"[ UNSAVED-FILE ]\t"+bcolors.ENDC +
+              name+" IN "+bcolors.WARNING+anotherClientID+bcolors.ENDC)
+
+
+def sendFile():
+    fileName = input("Nome do arquivo: ")
+    content = input("Conteúdo: ")
+
+    anotherClientID = adder.loadBalacing(id)
+    connectToAnotherClient(anotherClientID, fileName, content)
+
+    # if(response == True):
+    #     print(bcolors.OKGREEN+"[ARQUIVO-SALVO]"+bcolors.ENDC)
+    # else:
+    #     print(bcolors.FAIL+"[FALHA NO ENVIO DO ARQUIVO]"+bcolors.ENDC)
+
+
+def listFiles():
+    localFiles = loadFiles()
+    files = adder.listFiles(id)
+
+    log.save('LIST-ALL-FILES', "LENGTH => "+str(len(files)))
+    print(bcolors.OKGREEN +
+          "\n[Arquivos disponíveis] => "+bcolors.ENDC+str(len(files))+"\n")
+
+    for file in files:
+        if(file in localFiles):
+            print(bcolors.OKGREEN+"[ LOCAL ] "+bcolors.ENDC+file)
+        else:
+            print(bcolors.WARNING+"[EXTERNO] "+bcolors.ENDC+file)
+
+
 localFiles = loadFiles()
 
 adder = Pyro5.api.Proxy("PYRONAME:Main")
@@ -100,38 +151,11 @@ try:
         option = int(input(
             "\n"+bcolors.OKCYAN+"1 - listar todos os arquivos\n2 - Enviar arquivo\n3 - Abrir arquivo\n"+bcolors.WARNING+"0 - Sair\n\n"+bcolors.ENDC+"Opção: "))
         if(option == 1):
-            localFiles = loadFiles()
-            files = adder.listFiles(id)
-
-            log.save('LIST-ALL-FILES', "LENGTH => "+str(len(files)))
-            print(bcolors.OKGREEN +
-                  "\n[Arquivos disponíveis] => "+bcolors.ENDC+str(len(files))+"\n")
-
-            for file in files:
-                if(file in localFiles):
-                    print(bcolors.OKGREEN+"[ LOCAL ] "+bcolors.ENDC+file)
-                else:
-                    print(bcolors.WARNING+"[EXTERNO] "+bcolors.ENDC+file)
-
+            listFiles()
         elif(option == 2):
-
-            fileName = input("Nome do arquivo: ")
-            content = input("Conteúdo: ")
-
-            log.save('SEND-FILE-TO-ADMIN', fileName)
-
-            response = adder.sendFile(fileName, content, id)
-
-            if(response == True):
-                print(bcolors.OKGREEN+"[ARQUIVO-SALVO]"+bcolors.ENDC)
-            else:
-                print(bcolors.FAIL+"[FALHA NO ENVIO DO ARQUIVO]"+bcolors.ENDC)
-
+            sendFile()
         elif(option == 3):
-            try:
-                readFile()
-            except Exception as error:
-                print(error)
+            readFile()
 
         elif(option == 0):
             print(bcolors.OKGREEN + "\n[!] Bye"+bcolors.ENDC)
@@ -148,7 +172,7 @@ except KeyboardInterrupt:
 
 except Exception as error:
     print(bcolors.FAIL+"[Error] falha no menu"+bcolors.ENDC)
-    # print(error)
+    print(error)
 
 adder.closeConnection(id)
 exit(0)
