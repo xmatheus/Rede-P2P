@@ -1,11 +1,14 @@
+# servidor de nomes
+# '~/.local/bin/pyro5-ns'
 import Pyro5.api
 from colors import bcolors
 from datetime import datetime
 import uuid
-# servidor de nomes
-# '~/.local/bin/pyro5-ns'
+
+from Log import Log
 
 clients = []
+log = Log('servidor-log.txt')
 
 
 class Client:
@@ -15,9 +18,6 @@ class Client:
 
     def getFiles(self):
         return self.files
-
-    def saveFile(self):
-        pass
 
 
 def deleteClient(id):
@@ -36,24 +36,27 @@ def getFormatedTime():
 class GlobalFunctions(object):
 
     def connect(self, id, files):
+        log.save("USER-CONNECT", id)
         clients.append(Client(id, files))
 
         print(bcolors.OKGREEN+"[  CONNECT ]" +
               bcolors.OKCYAN+"["+getFormatedTime()+"]\t"+bcolors.ENDC+id)
 
     def closeConnection(self, id):
+        log.save("USER-DISCONNECT", id)
         deleteClient(id)
 
         print(bcolors.WARNING+"[DISCONNECT]" +
               bcolors.OKCYAN+"["+getFormatedTime()+"]"+"\t"+bcolors.ENDC+id)
 
     def listFiles(self, id):
+        log.save("USER-REQUEST-LIST-FILES", id)
         files = []
         for client in clients:
             files.append(client.getFiles())
         return [item for sublist in files for item in sublist]
 
-    def sendFile(self, name, content):
+    def sendFile(self, name, content, id):
         print(bcolors.OKBLUE+"[RECEIVING-FILE]\t"+bcolors.ENDC+name)
 
         fileId = uuid.uuid4()
@@ -64,12 +67,20 @@ class GlobalFunctions(object):
         response = proxyClient.saveFile(fileName, content)
 
         if(response == True):
+            log.save("RECEIVING-FILE-SUCESS", "from " +
+                     str(id)+" to "+str(client.id))
+
             client.files.append(fileName)
             print(bcolors.OKBLUE+"[  SAVED-FILE  ]\t"+bcolors.ENDC +
                   name+" IN "+bcolors.WARNING+client.id+bcolors.ENDC)
+            return True
         else:
+            log.save("RECEIVING-FILE-FAIL", "from " +
+                     str(id)+" to "+str(client.id))
+
             print(bcolors.FAIL+"[ UNSAVED-FILE ]\t"+bcolors.ENDC +
                   name+" IN "+bcolors.WARNING+client.id+bcolors.ENDC)
+            return False
 
     def loadBalacing(self):
         selected = clients[0]
@@ -79,6 +90,15 @@ class GlobalFunctions(object):
                 selected = client
 
         return selected
+
+    def getFile(self, fileName):
+        log.save("USER-REQUEST-FILE", fileName)
+
+        for client in clients:
+            for file in client.files:
+                if(file == fileName):
+                    return client.id
+        raise Exception("Arquivo não encontrado")
 
 
 daemon = Pyro5.server.Daemon()           # cria um daemon
