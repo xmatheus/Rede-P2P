@@ -8,7 +8,6 @@ import uuid
 
 from Log import Log
 
-clients = []
 
 log = Log('servidor-log.txt')
 
@@ -31,16 +30,18 @@ def getFormatedTime():
 @Pyro5.api.expose
 class GlobalFunctions(object):
 
+    clients = []
+
     def connect(self, files):
         id = str(uuid.uuid4())
         log.save("USER-CONNECT", id)
 
         # limitacao de 50 clientes(definido no escopo do trabalho)
-        if(len(clients) > 50):
+        if(len(self.clients) > 50):
             log.save("LIMIT-REACHED", '50')
             raise Exception("Máximo de clientes conectados")
 
-        clients.append(Client(id, files))
+        self.clients.append(Client(id, files))
 
         print(bcolors.OKGREEN+"[  CONNECT ]" +
               bcolors.OKCYAN+"["+getFormatedTime()+"]\t"+bcolors.ENDC+id)
@@ -56,12 +57,12 @@ class GlobalFunctions(object):
     def listFiles(self, id):
         log.save("USER-REQUEST-LIST-FILES", id)
         files = []
-        for client in clients:
+        for client in self.clients:
             files.append(client.getFiles())
         return [item for sublist in files for item in sublist]
 
     def appendFile(self, fileName, clientId):
-        for client in clients:
+        for client in self.clients:
             if(clientId == client.id):
                 client.files.append(fileName)
 
@@ -70,9 +71,9 @@ class GlobalFunctions(object):
               bcolors.OKCYAN+"["+getFormatedTime()+"]" +
               bcolors.ENDC+"\tfrom "+str(clientId))
 
-        selected = clients[0]
+        selected = self.clients[0]
 
-        for client in clients:
+        for client in self.clients:
             if(len(client.files) < len(selected.files)):
                 selected = client
 
@@ -83,16 +84,16 @@ class GlobalFunctions(object):
     def getFile(self, fileName):
         log.save("USER-REQUEST-FILE", fileName)
 
-        for client in clients:
+        for client in self.clients:
             for file in client.files:
                 if(file == fileName):
                     return client.id
         raise Exception("Arquivo não encontrado")
 
     def __deleteClient(self, id):
-        for client in clients:
+        for client in self.clients:
             if(client.id == id):
-                clients.remove(client)
+                self.clients.remove(client)
 
 
 daemon = Pyro5.server.Daemon()           # cria um daemon
