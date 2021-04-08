@@ -94,9 +94,6 @@ class GlobalFunctions(object):
                 clients.remove(client)
 
 
-for i in range(50):
-    clients.append(Client(i, []))
-
 daemon = Pyro5.server.Daemon()           # cria um daemon
 ns = Pyro5.api.locate_ns()               # encontra o servidor de nomes
 
