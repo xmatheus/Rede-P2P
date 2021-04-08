@@ -4,11 +4,10 @@ import time
 import threading
 import os
 
-from colors import bcolors
+from Colors import bcolors
 from Log import Log
 
 log = Log('client-log.txt')
-id = uuid.uuid4()
 banner = ("""\
 ██████╗ ██████╗ ██████╗     ████████╗██████╗  █████╗ ██████╗  █████╗ ██╗     ██╗  ██╗ ██████╗
 ██╔══██╗╚════██╗██╔══██╗    ╚══██╔══╝██╔══██╗██╔══██╗██╔══██╗██╔══██╗██║     ██║  ██║██╔═══██╗
@@ -35,12 +34,12 @@ class GlobalFunctions(object):
         return file.read()
 
 
-class myThread (threading.Thread):
-    def __init__(self):
+class MyThread (threading.Thread):
+    def __init__(self, id):
+        self.clientId = id
         threading.Thread.__init__(self)
 
     def run(self):
-        # print("Thread start")
         self.servidorStart()
 
     def servidorStart(self):
@@ -48,116 +47,118 @@ class myThread (threading.Thread):
         ns = Pyro5.api.locate_ns()               # encontra o servidor de nomes
         uri = daemon.register(GlobalFunctions)   # Registra como um objeto Pyro
         # Registra um objeto com um nome no servidor de nomes
-        ns.register(str(id), uri)
+        ns.register(str(self.clientId), uri)
         daemon.requestLoop()                     # Começa o loop para esperar chamadas
 
 
-def loadFiles():
-    if not os.path.exists('user-files'):
-        os.makedirs('user-files')
+class Client():
+    def __init__(self):
+        self.localFiles = self.loadFiles()
+        self.adder = Pyro5.api.Proxy("PYRONAME:Main")
+        self.id = self.adder.connect(self.localFiles)
 
-    arr = os.listdir('./user-files/')
-    return arr
+    def loadFiles(self):
+        if not os.path.exists('user-files'):
+            os.makedirs('user-files')
 
+        arr = os.listdir('./user-files/')
+        return arr
 
-def readFile():
-    fileName = input("Digite o nome do arquivo: ")
-    otherClientId = adder.getFile(fileName)
+    def listFiles(self):
+        self.localFiles = self.loadFiles()
+        files = self.adder.listFiles(self.id)
 
-    if(fileName in localFiles):
-        # nao precisa ir no ADMIN para achar o arquivo
-        log.save('READ-LOCAL-FILE', fileName)
+        log.save('LIST-ALL-FILES', "LENGTH => "+str(len(files)))
+        print(bcolors.OKGREEN +
+              "\n[Arquivos disponíveis] => "+bcolors.ENDC+str(len(files))+"\n")
 
-        print(bcolors.OKGREEN+"\n[CONTEÚDO]"+bcolors.ENDC)
-        print(GlobalFunctions().getFile(fileName))
-        return
+        for file in files:
+            if(file in self.localFiles):
+                print(bcolors.OKGREEN+"[ LOCAL ] "+bcolors.ENDC+file)
+            else:
+                print(bcolors.WARNING+"[EXTERNO] "+bcolors.ENDC+file)
 
-    # arquivo ta fora da maquina
-    log.save('READ-EXTERNAL-FILE', fileName+" from "+str(otherClientId))
+    def readFile(self):
+        fileName = input("Digite o nome do arquivo: ")
 
-    proxyClient = Pyro5.api.Proxy("PYRONAME:"+str(otherClientId))
-    response = proxyClient.getFile(fileName)
+        if(fileName in self.localFiles):
+            # nao precisa ir no ADMIN para achar o arquivo
+            log.save('READ-LOCAL-FILE', fileName)
 
-    print(bcolors.OKGREEN+"\n[CONTEÚDO]"+bcolors.ENDC)
-    print(response)
+            print(bcolors.OKGREEN+"\n[CONTEÚDO]"+bcolors.ENDC)
+            print(GlobalFunctions().getFile(fileName))
+            return
 
+        # arquivo ta fora da maquina
+        try:
+            otherClientId = self.adder.getFile(fileName)
+            log.save('READ-EXTERNAL-FILE', fileName +
+                     " from "+str(otherClientId))
 
-def connectToAnotherClient(anotherClientID, name, content):
-    proxyClient = Pyro5.api.Proxy("PYRONAME:"+str(anotherClientID))
-    fileId = uuid.uuid4()
-    fileName = str(fileId)+"-"+name
-    response = proxyClient.saveFile(fileName, content, id)
+            proxyClient = Pyro5.api.Proxy("PYRONAME:"+str(otherClientId))
+            response = proxyClient.getFile(fileName)
 
-    if(response == True):
-        log.save("SEND-FILE-SUCESS", "from " +
-                 str(id)+" to "+str(anotherClientID))
+            print(bcolors.OKGREEN+"\n[CONTEÚDO]"+bcolors.ENDC)
+            print(response)
+        except Exception as error:
+            print(error)
 
-        print(bcolors.OKBLUE+"[  SAVED-FILE  ]\t"+bcolors.ENDC +
-              name+" IN "+bcolors.WARNING+anotherClientID+bcolors.ENDC)
+    def connectToAnotherClient(self, anotherClientID, name, content):
+        proxyClient = Pyro5.api.Proxy("PYRONAME:"+str(anotherClientID))
+        fileId = uuid.uuid4()
+        fileName = str(fileId)+"-"+name
+        response = proxyClient.saveFile(fileName, content, self.id)
 
-        adder.appendFile(fileName, anotherClientID)
-    else:
-        log.save("SEND-FILE-FAIL", "from " +
-                 str(id)+" to "+str(anotherClientID))
+        if(response == True):
+            log.save("SEND-FILE-SUCESS", "from " +
+                     str(self.id)+" to "+str(anotherClientID))
 
-        print(bcolors.FAIL+"[ UNSAVED-FILE ]\t"+bcolors.ENDC +
-              name+" IN "+bcolors.WARNING+anotherClientID+bcolors.ENDC)
+            print(bcolors.OKBLUE+"[  SAVED-FILE  ]\t"+bcolors.ENDC +
+                  name+" IN "+bcolors.WARNING+anotherClientID+bcolors.ENDC)
 
-
-def sendFile():
-    fileName = input("Nome do arquivo: ")
-    content = input("Conteúdo: ")
-
-    anotherClientID = adder.loadBalacing(id)
-    connectToAnotherClient(anotherClientID, fileName, content)
-
-    # if(response == True):
-    #     print(bcolors.OKGREEN+"[ARQUIVO-SALVO]"+bcolors.ENDC)
-    # else:
-    #     print(bcolors.FAIL+"[FALHA NO ENVIO DO ARQUIVO]"+bcolors.ENDC)
-
-
-def listFiles():
-    localFiles = loadFiles()
-    files = adder.listFiles(id)
-
-    log.save('LIST-ALL-FILES', "LENGTH => "+str(len(files)))
-    print(bcolors.OKGREEN +
-          "\n[Arquivos disponíveis] => "+bcolors.ENDC+str(len(files))+"\n")
-
-    for file in files:
-        if(file in localFiles):
-            print(bcolors.OKGREEN+"[ LOCAL ] "+bcolors.ENDC+file)
+            self.adder.appendFile(fileName, anotherClientID)
         else:
-            print(bcolors.WARNING+"[EXTERNO] "+bcolors.ENDC+file)
+            log.save("SEND-FILE-FAIL", "from " +
+                     str(self.id)+" to "+str(anotherClientID))
+
+            print(bcolors.FAIL+"[ UNSAVED-FILE ]\t"+bcolors.ENDC +
+                  name+" IN "+bcolors.WARNING+anotherClientID+bcolors.ENDC)
+
+    def sendFile(self):
+        fileName = input("Nome do arquivo: ")
+        content = input("Conteúdo: ")
+
+        anotherClientID = self.adder.loadBalacing(self.id)
+        self.connectToAnotherClient(anotherClientID, fileName, content)
+
+    def disconnect(self):
+        self.adder.closeConnection(self.id)
+        exit(0)
 
 
-localFiles = loadFiles()
-
-adder = Pyro5.api.Proxy("PYRONAME:Main")
-adder.connect(id, localFiles)
-
+client = Client()
 
 try:
-    thread1 = myThread()
+    thread1 = MyThread(client.id)
     thread1.start()
 except:
     print(bcolors.FAIL+"[Error] não deu para iniciar uma thread"+bcolors.ENDC)
 
 try:
-    option = -1
+    option = '-1'
     print("\n"+banner)
-    while(option != 0):
-        option = int(input(
-            "\n"+bcolors.OKCYAN+"1 - listar todos os arquivos\n2 - Enviar arquivo\n3 - Abrir arquivo\n"+bcolors.WARNING+"0 - Sair\n\n"+bcolors.ENDC+"Opção: "))
-        if(option == 1):
-            listFiles()
-        elif(option == 2):
-            sendFile()
-        elif(option == 3):
-            readFile()
+    while(option != '0'):
+        option = input(
+            "\n"+bcolors.OKCYAN+"1 - listar todos os arquivos\n2 - Enviar arquivo\n3 - Abrir arquivo\n"+bcolors.WARNING+"0 - Sair\n\n"+bcolors.ENDC+"Opção: ")
+        if(option == '1'):
+            client.listFiles()
+        elif(option == '2'):
+            client.sendFile()
+        elif(option == '3'):
+            client.readFile()
 
-        elif(option == 0):
+        elif(option == '0'):
+            log.save("DISCONNECT", '')
             print(bcolors.OKGREEN + "\n[!] Bye"+bcolors.ENDC)
 
         else:
@@ -174,5 +175,4 @@ except Exception as error:
     print(bcolors.FAIL+"[Error] falha no menu"+bcolors.ENDC)
     print(error)
 
-adder.closeConnection(id)
-exit(0)
+client.disconnect()

@@ -1,7 +1,8 @@
 # servidor de nomes
 # '~/.local/bin/pyro5-ns'
+
 import Pyro5.api
-from colors import bcolors
+from Colors import bcolors
 from datetime import datetime
 import uuid
 
@@ -20,12 +21,6 @@ class Client:
         return self.files
 
 
-def deleteClient(id):
-    for client in clients:
-        if(client.id == id):
-            clients.remove(client)
-
-
 def getFormatedTime():
     now = datetime.now()
     return ('%02d:%02d.%d' %
@@ -35,16 +30,18 @@ def getFormatedTime():
 @Pyro5.api.expose
 class GlobalFunctions(object):
 
-    def connect(self, id, files):
+    def connect(self, files):
+        id = str(uuid.uuid4())
         log.save("USER-CONNECT", id)
         clients.append(Client(id, files))
 
         print(bcolors.OKGREEN+"[  CONNECT ]" +
               bcolors.OKCYAN+"["+getFormatedTime()+"]\t"+bcolors.ENDC+id)
+        return id
 
     def closeConnection(self, id):
         log.save("USER-DISCONNECT", id)
-        deleteClient(id)
+        self.__deleteClient(id)
 
         print(bcolors.WARNING+"[DISCONNECT]" +
               bcolors.OKCYAN+"["+getFormatedTime()+"]"+"\t"+bcolors.ENDC+id)
@@ -62,7 +59,9 @@ class GlobalFunctions(object):
                 client.files.append(fileName)
 
     def loadBalacing(self, clientId):
-        print(bcolors.OKBLUE+"[SENDING-FILE]\t"+bcolors.ENDC)
+        print(bcolors.OKBLUE+"[RECEIVING-SEND-FILE-REQUEST]" +
+              bcolors.OKCYAN+"["+getFormatedTime()+"]" +
+              bcolors.ENDC+"\tfrom "+str(clientId))
 
         selected = clients[0]
 
@@ -82,6 +81,11 @@ class GlobalFunctions(object):
                 if(file == fileName):
                     return client.id
         raise Exception("Arquivo não encontrado")
+
+    def __deleteClient(self, id):
+        for client in clients:
+            if(client.id == id):
+                clients.remove(client)
 
 
 daemon = Pyro5.server.Daemon()           # cria um daemon
