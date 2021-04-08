@@ -9,6 +9,7 @@ import uuid
 from Log import Log
 
 clients = []
+
 log = Log('servidor-log.txt')
 
 
@@ -33,6 +34,11 @@ class GlobalFunctions(object):
     def connect(self, files):
         id = str(uuid.uuid4())
         log.save("USER-CONNECT", id)
+
+        # limitacao de 50 clientes(definido no escopo do trabalho)
+        if(len(clients) > 50):
+            raise Exception("Máximo de clientes conectados")
+
         clients.append(Client(id, files))
 
         print(bcolors.OKGREEN+"[  CONNECT ]" +
@@ -87,6 +93,9 @@ class GlobalFunctions(object):
             if(client.id == id):
                 clients.remove(client)
 
+
+for i in range(50):
+    clients.append(Client(i, []))
 
 daemon = Pyro5.server.Daemon()           # cria um daemon
 ns = Pyro5.api.locate_ns()               # encontra o servidor de nomes
