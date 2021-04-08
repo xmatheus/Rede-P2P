@@ -37,6 +37,7 @@ class GlobalFunctions(object):
 
         # limitacao de 50 clientes(definido no escopo do trabalho)
         if(len(clients) > 50):
+            log.save("LIMIT-REACHED", '50')
             raise Exception("Máximo de clientes conectados")
 
         clients.append(Client(id, files))
