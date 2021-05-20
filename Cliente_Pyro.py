@@ -6,6 +6,7 @@ import os
 
 from Colors import bcolors
 from Log import Log
+from Servidor_Pyro import Servidor, GlobalFunctions as GlobalFunctionsServer, Client as SvClient
 
 log = Log('client-log.txt')
 banner = ("""\
@@ -19,6 +20,8 @@ banner = ("""\
 
 @ Pyro5.api.expose
 class GlobalFunctions(object):
+    backupClients = []
+
     def saveFile(self, name, content, clientId):
         try:
             with open('./user-files/'+name, 'a') as output:
@@ -29,9 +32,31 @@ class GlobalFunctions(object):
         except:
             return False
 
+    def clearBackup(self):
+        self.backupClients = []
+
+    def backup(self, id, admin, backup, files):
+        print("[BACKUP-HERE]")
+        self.backupClients.append(SvClient(id, files, admin, backup))
+
     def getFile(self, fileName):
         file = open('./user-files/'+fileName, "r")
         return file.read()
+
+    def restoreBackup(self, id, files, admin):
+        main = Pyro5.api.Proxy("PYRONAME:Main")
+        main.newClient(id, files, admin)
+
+    def update(self, admin):
+        client.searchAdmin(admin)
+
+    def isAdmin(self):
+        try:
+            startServidor()
+            print(bcolors.OKGREEN +
+                  "\n[TURNED-ADMIN] congratulations"+bcolors.ENDC)
+        except Exception as error:
+            print("[ERROR] Thread servidor")
 
 
 class MyThread (threading.Thread):
@@ -48,14 +73,52 @@ class MyThread (threading.Thread):
         uri = daemon.register(GlobalFunctions)   # Registra como um objeto Pyro
         # Registra um objeto com um nome no servidor de nomes
         ns.register(str(self.clientId), uri)
-        daemon.requestLoop()                     # Começa o loop para esperar chamadas
+        # Começa o loop para esperar chamadas
+        daemon.requestLoop()
+
+
+class ServidorThread (threading.Thread):
+
+    def __init__(self):
+        threading.Thread.__init__(self)
+
+    def run(self):
+        server = Servidor()
+
+
+def startServidor():
+    try:
+        sv = ServidorThread()
+        sv.daemon = True
+        sv.start()
+    except Exception as error:
+        print(error)
+        print(bcolors.FAIL+"[Error] Servidor não iniciado"+bcolors.ENDC)
 
 
 class Client():
+    admin = False
+
     def __init__(self):
+
         self.localFiles = self.loadFiles()
+        try:
+            self.adder = Pyro5.api.Proxy("PYRONAME:Main")
+            self.id = self.adder.connect(self.localFiles, self.admin)
+        except:
+            print("[ADMIN NOT FOUND]")
+            self.adder = GlobalFunctionsServer()
+            startServidor()
+            self.admin = True
+            self.id = self.adder.connect(self.localFiles, self.admin)
+
+        # self.adder.test()
+
+    def checkMain(self):
+        if(self.admin):
+            self.adder = GlobalFunctionsServer()
+            return
         self.adder = Pyro5.api.Proxy("PYRONAME:Main")
-        self.id = self.adder.connect(self.localFiles)
 
     def loadFiles(self):
         if not os.path.exists('user-files'):
@@ -65,6 +128,7 @@ class Client():
         return arr
 
     def listFiles(self):
+        self.checkMain()
         self.localFiles = self.loadFiles()
         files = self.adder.listFiles(self.id)
 
@@ -79,6 +143,7 @@ class Client():
                 print(bcolors.WARNING+"[EXTERNO] "+bcolors.ENDC+file)
 
     def readFile(self):
+        self.checkMain()
         fileName = input("Digite o nome do arquivo: ")
 
         if(fileName in self.localFiles):
@@ -104,6 +169,7 @@ class Client():
             print(error)
 
     def connectToAnotherClient(self, anotherClientID, name, content):
+        # self.checkMain()
         proxyClient = Pyro5.api.Proxy("PYRONAME:"+str(anotherClientID))
         fileId = uuid.uuid4()
         fileName = str(fileId)+"-"+name
@@ -116,7 +182,7 @@ class Client():
             print(bcolors.OKBLUE+"[  SAVED-FILE  ]\t"+bcolors.ENDC +
                   name+" IN "+bcolors.WARNING+anotherClientID+bcolors.ENDC)
 
-            self.adder.appendFile(fileName, anotherClientID)
+            self.adder.appendFile(fileName, anotherClientID, content)
         else:
             log.save("SEND-FILE-FAIL", "from " +
                      str(self.id)+" to "+str(anotherClientID))
@@ -125,23 +191,59 @@ class Client():
                   name+" IN "+bcolors.WARNING+anotherClientID+bcolors.ENDC)
 
     def sendFile(self):
+        self.checkMain()
         fileName = input("Nome do arquivo: ")
         content = input("Conteúdo: ")
 
         anotherClientID = self.adder.loadBalacing(self.id)
         self.connectToAnotherClient(anotherClientID, fileName, content)
 
+    def searchAdmin(self, admin):
+        self.admin = admin
+        if(admin):
+            self.adder = GlobalFunctionsServer()
+        else:
+            self.adder = Pyro5.api.Proxy("PYRONAME:Main")
+
+    def updateClient(self, id, admin):
+        proxyClient = Pyro5.api.Proxy("PYRONAME:"+str(id))
+        proxyClient.update(admin)
+
     def disconnect(self):
-        self.adder.closeConnection(self.id)
-        exit(0)
+        try:
+            newAdmin = self.adder.closeConnection(self.id)
+            allClients = self.adder.getClients()
+
+            daemon = Pyro5.server.Daemon()
+            daemon.unregister(GlobalFunctionsServer)
+
+            if(newAdmin):
+
+                proxyClient = Pyro5.api.Proxy("PYRONAME:"+str(newAdmin))
+                proxyClient.isAdmin()
+
+                for cl in allClients:
+
+                    if(cl.id == newAdmin):
+                        cl.admin = True
+
+                    proxyClient.restoreBackup(cl.id, cl.files, cl.admin)
+                    self.updateClient(cl.id, cl.admin)
+
+        except Exception as Error:
+            print(Error)
+        # exit(0)
 
 
 client = Client()
 
 try:
     thread1 = MyThread(client.id)
+    thread1.daemon = True
     thread1.start()
-except:
+
+except Exception as error:
+    print(error)
     print(bcolors.FAIL+"[Error] não deu para iniciar uma thread"+bcolors.ENDC)
 
 try:
@@ -165,11 +267,9 @@ try:
             print(bcolors.FAIL +
                   "\n[!] Essa ai a gente não implementou :|"+bcolors.ENDC)
 
-    print('\n'+bcolors.WARNING+'[INFO] '+bcolors.ENDC+'Press ctrl+c')
 
 except KeyboardInterrupt:
     print(bcolors.OKGREEN+"\n[!] Bye"+bcolors.ENDC)
-    print('\n'+bcolors.WARNING+'[INFO] '+bcolors.ENDC+'Press ctrl+c')
 
 except Exception as error:
     print(bcolors.FAIL+"[Error] falha no menu"+bcolors.ENDC)

@@ -1,5 +1,4 @@
 __pycache__/
 *.txt
 user-files/
-test/
-*-test/
+*test*/
