@@ -16,11 +16,9 @@ Trabalho de Sistemas distribuídos
  1 - É necessário chamar o servidor de nomes
  
  >~/.local/bin/pyro5-ns
- 
- 2 - Executar o servidor pyro
- > python Servidor_Pyro.py
 
- 3 - Executar o cliente
+
+ 3 - Executar o cliente/servidor
  > python Cliente_Pyro.py
 
 
