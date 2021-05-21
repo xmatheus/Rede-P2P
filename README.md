@@ -18,7 +18,7 @@ Trabalho de Sistemas distribuídos
  >~/.local/bin/pyro5-ns
 
 
- 3 - Executar o cliente/servidor
+ 2 - Executar o cliente/servidor
  > python Cliente_Pyro.py
 
 
